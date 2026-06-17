@@ -1,6 +1,7 @@
 #include <fstream>
 #include <iostream>
 #include <string.h>
+#include <mutex>
 #include "logger.h"
 #include "dbconnector.h"
 #include "producerstatetable.h"
@@ -53,6 +54,7 @@ void BufferMgr::readPgProfileLookupFile(string file)
 {
     SWSS_LOG_NOTICE("Read lookup configuration file...");
 
+    std::lock_guard<std::mutex> lock(m_pgProfileMutex);
     m_pgfile_processed = false;
 
     ifstream infile(file);
@@ -100,6 +102,7 @@ void BufferMgr::readPgProfileLookupFile(string file)
 
 task_process_status BufferMgr::doCableTask(string port, string cable_length)
 {
+    std::lock_guard<std::mutex> lock(m_cableLenMutex);
 
     if (cable_length != "None" && m_cableLenLookup[port] != cable_length)
     {
@@ -149,37 +152,50 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port)
     string speed;
     string pfc_enable;
 
-    if (m_cableLenLookup.count(port) == 0)
     {
-        SWSS_LOG_INFO("Unable to create/update PG profile for port %s. Cable length is not set", port.c_str());
-        return task_process_status::task_need_retry;
+        std::lock_guard<std::mutex> lock(m_cableLenMutex);
+        if (m_cableLenLookup.count(port) == 0)
+        {
+            SWSS_LOG_INFO("Unable to create/update PG profile for port %s. Cable length is not set", port.c_str());
+            return task_process_status::task_need_retry;
+        }
+        cable = m_cableLenLookup[port];
     }
 
-    cable = m_cableLenLookup[port];
     if (cable == "0m")
     {
         SWSS_LOG_NOTICE("Not creating/updating PG profile for port %s. Cable length is set to %s", port.c_str(), cable.c_str());
         return task_process_status::task_success;
     }
 
-    if (m_portStatusLookup.count(port) == 0)
     {
-        // admin_statue is not available yet. This can happen when notification of `PORT_QOS_MAP` table
-        // comes first. 
-        SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
-        return task_process_status::task_need_retry;
+        std::lock_guard<std::mutex> lock(m_portStatusMutex);
+        if (m_portStatusLookup.count(port) == 0)
+        {
+            // admin_statue is not available yet. This can happen when notification of `PORT_QOS_MAP` table
+            // comes first. 
+            SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
+            return task_process_status::task_need_retry;
+        }
     }
 
-    if (m_portPfcStatus.count(port) == 0)
     {
-        // PORT_QOS_MAP is not ready yet. The notification is cleared, and buffer pg
-        // will be handled when `pfc_enable` in `PORT_QOS_MAP` table is available
-        SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
-        return task_process_status::task_success;
+        std::lock_guard<std::mutex> lock(m_portPfcMutex);
+        if (m_portPfcStatus.count(port) == 0)
+        {
+            // PORT_QOS_MAP is not ready yet. The notification is cleared, and buffer pg
+            // will be handled when `pfc_enable` in `PORT_QOS_MAP` table is available
+            SWSS_LOG_INFO("pfc_enable status is not available for port %s", port.c_str());
+            return task_process_status::task_success;
+        }
+        pfc_enable = m_portPfcStatus[port];
     }
-    pfc_enable = m_portPfcStatus[port];
 
-    speed = m_speedLookup[port];
+    {
+        std::lock_guard<std::mutex> lock(m_speedMutex);
+        speed = m_speedLookup[port];
+    }
+
     // key format is pg_lossless_<speed>_<cable>_profile
     string buffer_profile_key = "pg_lossless_" + speed + "_" + cable + "_profile";
     string profile_ref = buffer_profile_key;
@@ -203,7 +219,13 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port)
     // Although we have up to 8 PGs for now, the range to check is expanded to 32 support more PGs
     set<string> lossless_pg_combinations = generateIdListFromMap(lossless_pg_id, sizeof(lossless_pg_id));
 
-    if (m_portStatusLookup[port] == "down" && (m_platform == "mellanox" || m_platform == "barefoot"))
+    string port_status;
+    {
+        std::lock_guard<std::mutex> lock(m_portStatusMutex);
+        port_status = m_portStatusLookup[port];
+    }
+
+    if (port_status == "down" && (m_platform == "mellanox" || m_platform == "barefoot"))
     {
         for (auto lossless_pg : lossless_pg_combinations)
         {
@@ -235,11 +257,14 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port)
         return task_process_status::task_success;
     }
     
-    if (m_pgProfileLookup.count(speed) == 0 || m_pgProfileLookup[speed].count(cable) == 0)
     {
-            SWSS_LOG_ERROR("Unable to create/update PG profile for port %s. No PG profile configured for speed %s and cable length %s",
-                        port.c_str(), speed.c_str(), cable.c_str());
-            return task_process_status::task_invalid_entry;
+        std::lock_guard<std::mutex> lock(m_pgProfileMutex);
+        if (m_pgProfileLookup.count(speed) == 0 || m_pgProfileLookup[speed].count(cable) == 0)
+        {
+                SWSS_LOG_ERROR("Unable to create/update PG profile for port %s. No PG profile configured for speed %s and cable length %s",
+                            port.c_str(), speed.c_str(), cable.c_str());
+                return task_process_status::task_invalid_entry;
+        }
     }
 
     vector<FieldValueTuple> fvVectorProfile;
@@ -261,6 +286,7 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port)
         // profile threshold field name
         mode += "_th";
 
+        std::lock_guard<std::mutex> lock(m_pgProfileMutex);
         fvVectorProfile.push_back(make_pair("pool", INGRESS_LOSSLESS_PG_POOL_NAME));
         fvVectorProfile.push_back(make_pair("xon", m_pgProfileLookup[speed][cable].xon));
         if (m_pgProfileLookup[speed][cable].xon_offset.length() > 0)
@@ -389,6 +415,7 @@ void BufferMgr::doBufferMetaTask(Consumer &consumer)
             {
                 if (fvField(i) == "buffer_model")
                 {
+                    std::lock_guard<std::mutex> lock(m_bufferModelMutex);
                     if (fvValue(i) == "dynamic")
                     {
                         dynamic_buffer_model = true;
@@ -403,6 +430,7 @@ void BufferMgr::doBufferMetaTask(Consumer &consumer)
         }
         else if (op == DEL_COMMAND)
         {
+            std::lock_guard<std::mutex> lock(m_bufferModelMutex);
             dynamic_buffer_model = false;
         }
         it = consumer.m_toSync.erase(it);
@@ -432,13 +460,16 @@ void BufferMgr::doPortQosTableTask(Consumer &consumer)
         if (op == SET_COMMAND)
         {
             bool update_pfc_enable = false;
+            string new_pfc_status;
             for (auto itp : kfvFieldsValues(tuple))
             {
                 if (fvField(itp) == "pfc_enable")
                 {
+                    std::lock_guard<std::mutex> lock(m_portPfcMutex);
                     if (m_portPfcStatus.count(port_name) == 0 || m_portPfcStatus[port_name] != fvValue(itp))
                     {
                         m_portPfcStatus[port_name] = fvValue(itp);
+                        new_pfc_status = fvValue(itp);
                         update_pfc_enable = true;
                     }
                     SWSS_LOG_INFO("Got pfc enable status for port %s status %s", port_name.c_str(), fvValue(itp).c_str());
@@ -454,6 +485,7 @@ void BufferMgr::doPortQosTableTask(Consumer &consumer)
         else if (op == DEL_COMMAND)
         {
             SWSS_LOG_INFO("Port %s removed from PORT_QOS_MAP, clearing PFC status", port_name.c_str());
+            std::lock_guard<std::mutex> lock(m_portPfcMutex);
             m_portPfcStatus.erase(port_name);
         }
         it = consumer.m_toSync.erase(it);
@@ -473,7 +505,13 @@ void BufferMgr::doTask(Consumer &consumer)
         return;
     }
 
-    if (dynamic_buffer_model)
+    bool is_dynamic_buffer_model;
+    {
+        std::lock_guard<std::mutex> lock(m_bufferModelMutex);
+        is_dynamic_buffer_model = dynamic_buffer_model;
+    }
+
+    if (is_dynamic_buffer_model)
     {
          SWSS_LOG_DEBUG("Dynamic buffer model enabled. Skipping further processing");
          return;
@@ -541,35 +579,53 @@ void BufferMgr::doTask(Consumer &consumer)
                     task_status = doCableTask(fvField(i), fvValue(i));
                 }
             }
-            else if (m_pgfile_processed && table_name == CFG_PORT_TABLE_NAME)
+            else
             {
-                bool admin_status_found = false;
-
-                for (auto i : kfvFieldsValues(t))
+                bool pgfile_processed;
                 {
-                    if (fvField(i) == "speed")
-                    {
-                        m_speedLookup[port] = fvValue(i);
-                    }
-                    if (fvField(i) == "admin_status")
-                    {
-                        m_portStatusLookup[port] = fvValue(i);
-                        admin_status_found = true;
-                    }
+                    std::lock_guard<std::mutex> lock(m_pgProfileMutex);
+                    pgfile_processed = m_pgfile_processed;
                 }
                 
-                // Ensure admin_status is set to "down" if not received
-                if (!admin_status_found)
+                if (pgfile_processed && table_name == CFG_PORT_TABLE_NAME)
                 {
-                    /* CONFIG_DB producer may not always generate admin_status field for down ports. */
-                    SWSS_LOG_INFO("admin_status is not available for port %s, assuming default down", port.c_str());
-                    m_portStatusLookup[port] = "down";
-                }
+                    bool admin_status_found = false;
 
-                if (m_speedLookup.count(port) != 0)
-                {
-                    // create/update profile for port
-                    task_status = doSpeedUpdateTask(port);
+                    for (auto i : kfvFieldsValues(t))
+                    {
+                        if (fvField(i) == "speed")
+                        {
+                            std::lock_guard<std::mutex> lock(m_speedMutex);
+                            m_speedLookup[port] = fvValue(i);
+                        }
+                        if (fvField(i) == "admin_status")
+                        {
+                            std::lock_guard<std::mutex> lock(m_portStatusMutex);
+                            m_portStatusLookup[port] = fvValue(i);
+                            admin_status_found = true;
+                        }
+                    }
+                    
+                    // Ensure admin_status is set to "down" if not received
+                    if (!admin_status_found)
+                    {
+                        /* CONFIG_DB producer may not always generate admin_status field for down ports. */
+                        SWSS_LOG_INFO("admin_status is not available for port %s, assuming default down", port.c_str());
+                        std::lock_guard<std::mutex> lock(m_portStatusMutex);
+                        m_portStatusLookup[port] = "down";
+                    }
+
+                    bool has_speed;
+                    {
+                        std::lock_guard<std::mutex> lock(m_speedMutex);
+                        has_speed = (m_speedLookup.count(port) != 0);
+                    }
+
+                    if (has_speed)
+                    {
+                        // create/update profile for port
+                        task_status = doSpeedUpdateTask(port);
+                    }
                 }
             }
         }
