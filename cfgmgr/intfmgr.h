@@ -8,6 +8,7 @@
 #include <map>
 #include <string>
 #include <set>
+#include <mutex>
 
 struct SubIntfInfo
 {
@@ -42,6 +43,12 @@ private:
     std::set<std::string> m_ipv6LinkLocalModeList;
     std::map<std::string, std::set<std::string>> m_intfLLAddresses;
     std::string mySwitchType;
+
+    std::mutex m_warmRestartMutex;
+    std::mutex m_pendingReplayMutex;
+    std::mutex m_subIntfMutex;
+    std::mutex m_sagIntfMutex;
+    std::mutex m_loopbackIntfMutex;
 
     void setIntfIp(const std::string &alias, const std::string &opCmd, const IpPrefix &ipPrefix);
     void setIntfVrf(const std::string &alias, const std::string &vrfName);
