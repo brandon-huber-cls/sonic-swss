@@ -84,14 +84,7 @@ void BufferMgr::readPgProfileLookupFile(string file)
         m_pgProfileLookup[speed][cable].xon_offset = "";
         iss >> m_pgProfileLookup[speed][cable].xon_offset;
 
-        SWSS_LOG_NOTICE("PG profile for speed %s and cable %s is: size:%s, xon:%s, xoff:%s, th:%s, xon_offset:%s",
-                       speed.c_str(), cable.c_str(),
-                       m_pgProfileLookup[speed][cable].size.c_str(),
-                       m_pgProfileLookup[speed][cable].xon.c_str(),
-                       m_pgProfileLookup[speed][cable].xoff.c_str(),
-                       m_pgProfileLookup[speed][cable].threshold.c_str(),
-                       m_pgProfileLookup[speed][cable].xon_offset.c_str()
-                       );
+        SWSS_LOG_DEBUG("PG profile loaded for speed %s and cable %s", speed.c_str(), cable.c_str());
     }
 
     m_pgfile_processed = true;
@@ -104,7 +97,7 @@ task_process_status BufferMgr::doCableTask(string port, string cable_length)
     if (cable_length != "None" && m_cableLenLookup[port] != cable_length)
     {
         m_cableLenLookup[port] = cable_length;
-        SWSS_LOG_INFO("Cable length set to %s for port %s", m_cableLenLookup[port].c_str(), port.c_str());
+        SWSS_LOG_INFO("Cable length updated for port %s", port.c_str());
         // The return status is ignored
         doSpeedUpdateTask(port);
     }
@@ -225,7 +218,7 @@ task_process_status BufferMgr::doSpeedUpdateTask(string port)
                         }
                         else
                         {
-                            SWSS_LOG_NOTICE("Not default profile %s is configured on PG %s, won't reclaim buffer", fvValue(prop).c_str(), buffer_pg_key.c_str());
+                            SWSS_LOG_NOTICE("Non-default profile configured on PG %s, buffer will not be reclaimed", buffer_pg_key.c_str());
                         }
                     }
                 }
@@ -352,18 +345,17 @@ void BufferMgr::doBufferTableTask(Consumer &consumer, ProducerStateTable &applTa
         {
             vector<FieldValueTuple> fvVector;
 
-            SWSS_LOG_INFO("Inserting entry %s from CONFIG_DB to APPL_DB", key.c_str());
+            SWSS_LOG_DEBUG("Processing buffer table entry: %s", key.c_str());
 
             for (auto i : kfvFieldsValues(t))
             {
                 fvVector.emplace_back(FieldValueTuple(fvField(i), fvValue(i)));
-                SWSS_LOG_INFO("Inserting field %s value %s", fvField(i).c_str(), fvValue(i).c_str());
             }
             applTable.set(key, fvVector);
         }
         else if (op == DEL_COMMAND)
         {
-            SWSS_LOG_INFO("Removing entry %s from APPL_DB", key.c_str());
+            SWSS_LOG_DEBUG("Removing buffer table entry: %s", key.c_str());
             applTable.del(key);
         }
         it = consumer.m_toSync.erase(it);
@@ -441,7 +433,7 @@ void BufferMgr::doPortQosTableTask(Consumer &consumer)
                         m_portPfcStatus[port_name] = fvValue(itp);
                         update_pfc_enable = true;
                     }
-                    SWSS_LOG_INFO("Got pfc enable status for port %s status %s", port_name.c_str(), fvValue(itp).c_str());
+                    SWSS_LOG_DEBUG("PFC enable status updated for port %s", port_name.c_str());
                     break;
                 }
             }
