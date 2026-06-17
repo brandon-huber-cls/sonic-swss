@@ -1,3 +1,4 @@
+```cpp
 #include <string.h>
 #include "logger.h"
 #include "dbconnector.h"
@@ -132,7 +133,7 @@ void IntfMgr::setIntfIp(const string &alias, const string &opCmd,
 
         if (ret)
         {
-            SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+            SWSS_LOG_ERROR("Failed to execute IP address command for interface %s with rc %d", alias.c_str(), ret);
         }
     }
 }
@@ -174,7 +175,7 @@ void IntfMgr::setSagFdbEntry(const string &op, const string &alias, const string
         int ret = swss::exec(cmd.str(), res);
         if (ret)
         {
-            SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+            SWSS_LOG_ERROR("Failed to execute FDB command for VLAN %d with rc %d", vlan_id, ret);
         }
     }
 }
@@ -189,7 +190,7 @@ void IntfMgr::setIntfMac(const string &alias, const string &mac_str)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to set MAC address for interface %s with rc %d", alias.c_str(), ret);
     }
 }
 
@@ -209,7 +210,7 @@ void IntfMgr::setIntfVrf(const string &alias, const string &vrfName)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to set VRF for interface %s with rc %d", alias.c_str(), ret);
     }
 }
 
@@ -235,7 +236,7 @@ bool IntfMgr::setIntfMpls(const string &alias, const string& mpls)
     // Don't return error unless MPLS is explicitly set
     if (ret && !mpls.empty())
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to set MPLS for interface %s with rc %d", alias.c_str(), ret);
     }
     return true;
 }
@@ -257,7 +258,7 @@ void IntfMgr::setIntfState(const string &alias, bool isUp)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to set interface state for %s with rc %d", alias.c_str(), ret);
     }
 }
 
@@ -270,7 +271,7 @@ void IntfMgr::addLoopbackIntf(const string &alias)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to add loopback interface %s with rc %d", alias.c_str(), ret);
     }
 }
 
@@ -283,7 +284,7 @@ void IntfMgr::delLoopbackIntf(const string &alias)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to delete loopback interface %s with rc %d", alias.c_str(), ret);
     }
 }
 
@@ -297,7 +298,7 @@ void IntfMgr::flushLoopbackIntfs()
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_DEBUG("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_DEBUG("No loopback interfaces found to flush");
         return;
     }
 
@@ -325,7 +326,7 @@ int IntfMgr::getIntfIpCount(const string &alias)
     int ret = swss::exec(cmd.str(), res);
     if (ret)
     {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        SWSS_LOG_ERROR("Failed to get IP count for interface %s with rc %d", alias.c_str(), ret);
         return 0;
     }
 
@@ -520,11 +521,11 @@ std::string IntfMgr::setHostSubIntfMtu(const string &alias, const string &mtu, c
     {
         // Can happen when a SET notification on the PORT_TABLE in the State DB
         // followed by a new DEL notification that send by portmgrd
-        SWSS_LOG_WARN("Setting mtu to %s netdev failed with cmd:%s, rc:%d, error:%s", alias.c_str(), cmd_str.c_str(), ret, res.c_str());
+        SWSS_LOG_WARN("Setting mtu to %s netdev failed, rc:%d", alias.c_str(), ret);
     }
     else if (ret)
     {
-        throw runtime_error(cmd_str + " : " + res);
+        throw runtime_error("Failed to set MTU for interface " + alias);
     }
     return subifMtu;
 }
@@ -566,13 +567,13 @@ bool IntfMgr::setIntfAdminStatus(const string &alias, const string &admin_status
     if (ret && !isIntfStateOk(alias))
     {
         // Can happen when a DEL notification is sent by portmgrd immediately followed by a new SET notification
-        SWSS_LOG_WARN("Setting admin_status to %s netdev failed with cmd:%s, rc:%d, error:%s",
-                      alias.c_str(), cmd_str.c_str(), ret, res.c_str());
+        SWSS_LOG_WARN("Setting admin_status to %s netdev failed, rc:%d",
+                      alias.c_str(), ret);
         return false;
     }
     else if (ret)
     {
-        throw runtime_error(cmd_str + " : " + res);
+        throw runtime_error("Failed to set admin status for interface " + alias);
     }
     return true;
 }
@@ -751,791 +752,4 @@ bool IntfMgr::isIntfStateOk(const string &alias)
             return true;
         }
     }
-    else if (m_statePortTable.get(alias, temp))
-    {
-        auto state_opt = swss::fvsGetValue(temp, "state", true);
-        if (!state_opt)
-        {
-            return false;
-        }
-        SWSS_LOG_DEBUG("Port %s is ready", alias.c_str());
-        return true;
-    }
-    else if (!alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX))
-    {
-        return true;
-    }
-    else if (!alias.compare(0, strlen(SUBINTF_LAG_PREFIX), SUBINTF_LAG_PREFIX))
-    {
-        if (m_stateLagTable.get(alias, temp))
-        {
-            SWSS_LOG_DEBUG("Lag %s is ready", alias.c_str());
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void IntfMgr::delIpv6LinkLocalNeigh(const string &alias)
-{
-    vector<string> neighEntries;
-
-    SWSS_LOG_INFO("Deleting ipv6 link local neighbors for %s", alias.c_str());
-
-    m_neighTable.getKeys(neighEntries);
-    for (auto neighKey : neighEntries)
-    {
-        if (!neighKey.compare(0, alias.size(), alias.c_str()))
-        {
-            vector<string> keys = tokenize(neighKey, ':', 1);
-            if (keys.size() == 2)
-            {
-                IpAddress ipAddress(keys[1]);
-                if (ipAddress.getAddrScope() == IpAddress::AddrScope::LINK_SCOPE)
-                {
-                    stringstream cmd;
-                    string res;
-
-                    cmd << IP_CMD << " neigh del dev " << keys[0] << " " << keys[1] ;
-                    swss::exec(cmd.str(), res);
-                    SWSS_LOG_INFO("Deleted ipv6 link local neighbor - %s", keys[1].c_str());
-                }
-            }
-        }
-    }
-}
-
-bool IntfMgr::doIntfGeneralTask(const vector<string>& keys,
-        vector<FieldValueTuple> data,
-        const string& op)
-{
-    SWSS_LOG_ENTER();
-
-    string alias(keys[0]);
-    string vlanId;
-    string parentAlias;
-    size_t found = alias.find(VLAN_SUB_INTERFACE_SEPARATOR);
-    if (found != string::npos)
-    {
-        subIntf subIf(alias);
-        // alias holds the complete sub interface name
-        // while parentAlias holds the parent port name
-        /*Check if subinterface is valid and sub interface name length is < 15(IFNAMSIZ)*/
-        if (!subIf.isValid())
-        {
-            SWSS_LOG_ERROR("Invalid subnitf: %s", alias.c_str());
-            return true;
-        }
-        parentAlias = subIf.parentIntf();
-        int subIntfId = subIf.subIntfIdx();
-        /*If long name format, subinterface Id is vlanid */
-        if (!subIf.isShortName())
-        {
-            vlanId = std::to_string(subIntfId);
-            FieldValueTuple vlanTuple("vlan", vlanId);
-            data.push_back(vlanTuple);
-        }
-    }
-    bool is_lo = !alias.compare(0, strlen(LOOPBACK_PREFIX), LOOPBACK_PREFIX);
-    string mac = "";
-    string vrf_name = "";
-    string mtu = "";
-    string adminStatus = "";
-    string nat_zone = "";
-    string proxy_arp = "";
-    string grat_arp = "";
-    string mpls = "";
-    string ipv6_link_local_mode = "";
-    string sag = "";
-    string loopback_action = "";
-
-    for (auto idx : data)
-    {
-        const auto &field = fvField(idx);
-        const auto &value = fvValue(idx);
-
-        if (field == "vnet_name" || field == "vrf_name")
-        {
-            vrf_name = value;
-        }
-        else if (field == "mac_addr")
-        {
-            mac = value;
-        }
-        else if (field == "admin_status")
-        {
-            adminStatus = value;
-        }
-        else if (field == "proxy_arp")
-        {
-            proxy_arp = value;
-        }
-        else if (field == "grat_arp")
-        {
-            grat_arp = value;
-        }
-        else if (field == "mpls")
-        {
-            mpls = value;
-        }
-        else if (field == "nat_zone")
-        {
-            nat_zone = value;
-        }
-        else if (field == "ipv6_use_link_local_only")
-        {
-            ipv6_link_local_mode = value;
-        }
-        else if (field == "static_anycast_gateway")
-        {
-            sag = value;
-        }
-        else if (field == "vlan")
-        {
-            vlanId = value;
-        }
-        else if (field == "loopback_action")
-        {
-            loopback_action = value;
-        }
-    }
-
-    if (op == SET_COMMAND)
-    {
-        if (!isIntfStateOk(parentAlias.empty() ? alias : parentAlias))
-        {
-            SWSS_LOG_DEBUG("Interface is not ready, skipping %s", alias.c_str());
-            return false;
-        }
-
-        if (!vrf_name.empty() && !isIntfStateOk(vrf_name))
-        {
-            SWSS_LOG_DEBUG("VRF is not ready, skipping %s", vrf_name.c_str());
-            return false;
-        }
-
-        /* if to change vrf then skip */
-        if (isIntfChangeVrf(alias, vrf_name))
-        {
-            SWSS_LOG_ERROR("%s can not change to %s directly, skipping", alias.c_str(), vrf_name.c_str());
-            return true;
-        }
-
-        if (is_lo)
-        {
-            if (m_loopbackIntfList.find(alias) == m_loopbackIntfList.end())
-            {
-                addLoopbackIntf(alias);
-                m_loopbackIntfList.insert(alias);
-                SWSS_LOG_INFO("Added %s loopback interface", alias.c_str());
-            }
-
-            if (adminStatus.empty())
-            {
-                adminStatus = "up";
-            }
-            else if (adminStatus != "up" && adminStatus != "down")
-            {
-                SWSS_LOG_WARN("Got incorrect value for admin_status as %s for intf %s, defaulting as up", adminStatus.c_str(), alias.c_str());
-                adminStatus = "up";
-            }
-
-            try
-            {
-                if (setIntfAdminStatus(alias, adminStatus))
-                {
-                    FieldValueTuple newAdminFvTuple("admin_status", adminStatus);
-                    data.push_back(newAdminFvTuple);
-                }
-            }
-            catch (const std::runtime_error &e)
-            {
-                SWSS_LOG_WARN("Lo interface ip link set admin status %s failure. Runtime error: %s", adminStatus.c_str(), e.what());
-            }
-        }
-        else
-        {
-            /* Set nat zone */
-            if (!nat_zone.empty())
-            {
-                FieldValueTuple fvTuple("nat_zone", nat_zone);
-                data.push_back(fvTuple);
-            }
-
-            /* Set loopback action */
-            if (!loopback_action.empty())
-            {
-                FieldValueTuple fvTuple("loopback_action", loopback_action);
-                data.push_back(fvTuple);
-            }
-
-            /* Set mpls */
-            if (!setIntfMpls(alias, mpls))
-            {
-                SWSS_LOG_ERROR("Failed to set MPLS to \"%s\" for the \"%s\" interface", mpls.c_str(), alias.c_str());
-                return false;
-            }
-            if (!mpls.empty())
-            {
-                FieldValueTuple fvTuple("mpls", mpls);
-                data.push_back(fvTuple);
-            }
-
-            /* Set ipv6 mode */
-            if (!ipv6_link_local_mode.empty())
-            {
-                if ((ipv6_link_local_mode == "enable") && (m_ipv6LinkLocalModeList.find(alias) == m_ipv6LinkLocalModeList.end()))
-                {
-                    m_ipv6LinkLocalModeList.insert(alias);
-                    SWSS_LOG_INFO("Inserted ipv6 link local mode list for %s", alias.c_str());
-                }
-                else if ((ipv6_link_local_mode == "disable") && (m_ipv6LinkLocalModeList.find(alias) != m_ipv6LinkLocalModeList.end()))
-                {
-                    m_ipv6LinkLocalModeList.erase(alias);
-                    delIpv6LinkLocalNeigh(alias);
-                    SWSS_LOG_INFO("Erased ipv6 link local mode list for %s", alias.c_str());
-                }
-                FieldValueTuple fvTuple("ipv6_use_link_local_only", ipv6_link_local_mode);
-                data.push_back(fvTuple);
-            }
-        }
-
-        if (!parentAlias.empty())
-        {
-            subIntf subIf(alias);
-            if (m_subIntfList.find(alias) == m_subIntfList.end())
-            {
-                if (vlanId == "0" || vlanId.empty())
-                {
-                    SWSS_LOG_INFO("Vlan ID not configured for sub interface %s", alias.c_str());
-                    return false;
-                }
-                try
-                {
-                    addHostSubIntf(parentAlias, alias, vlanId);
-                }
-                catch (const std::runtime_error &e)
-                {
-                    SWSS_LOG_NOTICE("Sub interface ip link add failure. Runtime error: %s", e.what());
-                    return false;
-                }
-
-                m_subIntfList[alias].vlanId = vlanId;
-            }
-
-            if (!mtu.empty())
-            {
-                string subintf_mtu;
-                try
-                {
-                    string parentMtu = getIntfMtu(subIf.parentIntf());
-                    subintf_mtu = setHostSubIntfMtu(alias, mtu, parentMtu);
-                    FieldValueTuple fvTuple("mtu", mtu);
-                    std::remove(data.begin(), data.end(), fvTuple);
-                    FieldValueTuple newMtuFvTuple("mtu", subintf_mtu);
-                    data.push_back(newMtuFvTuple);
-                }
-                catch (const std::runtime_error &e)
-                {
-                    SWSS_LOG_NOTICE("Sub interface ip link set mtu failure. Runtime error: %s", e.what());
-                    return false;
-                }
-                m_subIntfList[alias].mtu = mtu;
-            }
-            else
-            {
-                FieldValueTuple fvTuple("mtu", MTU_INHERITANCE);
-                data.push_back(fvTuple);
-                m_subIntfList[alias].mtu = MTU_INHERITANCE;
-            }
-
-            if (adminStatus.empty())
-            {
-                adminStatus = "up";
-                FieldValueTuple fvTuple("admin_status", adminStatus);
-                data.push_back(fvTuple);
-            }
-            try
-            {
-                string parentAdmin = getIntfAdminStatus(subIf.parentIntf());
-                string subintf_admin = setHostSubIntfAdminStatus(alias, adminStatus, parentAdmin);
-                m_subIntfList[alias].currAdminStatus = subintf_admin;
-                FieldValueTuple fvTuple("admin_status", adminStatus);
-                std::remove(data.begin(), data.end(), fvTuple);
-                FieldValueTuple newAdminFvTuple("admin_status", subintf_admin);
-                data.push_back(newAdminFvTuple);
-            }
-            catch (const std::runtime_error &e)
-            {
-                SWSS_LOG_NOTICE("Sub interface ip link set admin status %s failure. Runtime error: %s", adminStatus.c_str(), e.what());
-                return false;
-            }
-            m_subIntfList[alias].adminStatus = adminStatus;
-
-            // set STATE_DB port state
-            setSubIntfStateOk(alias);
-        }
-
-        if (!vrf_name.empty())
-        {
-            setIntfVrf(alias, vrf_name);
-        }
-
-        /*Set the mac of interface*/
-        if (!mac.empty())
-        {
-            setIntfMac(alias, mac);
-        }
-        else
-        {
-            if (!sag.empty())
-            {
-                // only VLAN interface can set static anycast gateway
-                if (!alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
-                {
-                    string gwmac = "";
-                    if (m_cfgSagTable.hget("GLOBAL", "gateway_mac", gwmac))
-                    {
-                        // before change interface MAC, set interface down and up to regenerate IPv6 LL by MAC
-                        if (sag == "true")
-                        {
-                            m_sagIntfList[alias] = true;
-
-                            setIntfState(alias, false);
-                            setIntfMac(alias, gwmac);
-                            setIntfState(alias, true);
-                            // add this MAC fdb into bridge
-                            setSagFdbEntry("replace", alias, gwmac);
-
-                            FieldValueTuple fvTuple("mac_addr", gwmac);
-                            data.push_back(fvTuple);
-                        }
-                        else if (sag == "false")
-                        {
-                            m_sagIntfList[alias] = false;
-
-                            // del the sag MAC fdb from bridge
-                            setSagFdbEntry("del", alias, gSagMacAddress.to_string());
-
-                            setIntfState(alias, false);
-                            setIntfMac(alias, gMacAddress.to_string());
-                            setIntfState(alias, true);
-
-                            FieldValueTuple fvTuple("mac_addr", MacAddress().to_string());
-                            data.push_back(fvTuple);
-                        } else {
-                            SWSS_LOG_ERROR("invalid SAG config \"%s\", it should be \"true\" or \"false\"", sag.c_str());
-                        }
-                    }
-                }
-            }
-            else
-            {
-                FieldValueTuple fvTuple("mac_addr", MacAddress().to_string());
-                data.push_back(fvTuple);
-            }
-        }
-
-        if (!proxy_arp.empty())
-        {
-            if (!setIntfProxyArp(alias, proxy_arp))
-            {
-                SWSS_LOG_ERROR("Failed to set proxy ARP to \"%s\" state for the \"%s\" interface", proxy_arp.c_str(), alias.c_str());
-                return false;
-            }
-
-            if (!alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
-            {
-                FieldValueTuple fvTuple("proxy_arp", proxy_arp);
-                data.push_back(fvTuple);
-            }
-        }
-
-        if (!grat_arp.empty())
-        {
-            if (!setIntfGratArp(alias, grat_arp))
-            {
-                SWSS_LOG_ERROR("Failed to set ARP accept to \"%s\" state for the \"%s\" interface", grat_arp.c_str(), alias.c_str());
-                return false;
-            }
-
-            if (!alias.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
-            {
-                FieldValueTuple fvTuple("grat_arp", grat_arp);
-                data.push_back(fvTuple);
-            }
-        }
-
-        m_appIntfTableProducer.set(alias, data);
-        m_stateIntfTable.hset(alias, "vrf", vrf_name);
-    }
-    else if (op == DEL_COMMAND)
-    {
-        /* make sure all ip addresses associated with interface are removed, otherwise these ip address would
-           be set with global vrf and it may cause ip address conflict. */
-        if (getIntfIpCount(alias))
-        {
-            return false;
-        }
-
-        setIntfVrf(alias, "");
-
-        if (is_lo)
-        {
-            delLoopbackIntf(alias);
-            m_loopbackIntfList.erase(alias);
-        }
-
-        if (!parentAlias.empty())
-        {
-            removeHostSubIntf(alias);
-            m_subIntfList.erase(alias);
-
-            removeSubIntfState(alias);
-        }
-
-        if (m_ipv6LinkLocalModeList.find(alias) != m_ipv6LinkLocalModeList.end())
-        {
-            m_ipv6LinkLocalModeList.erase(alias);
-            delIpv6LinkLocalNeigh(alias);
-            SWSS_LOG_INFO("Erased ipv6 link local mode list for %s", alias.c_str());
-        }
-
-        if (m_sagIntfList.find(alias) != m_sagIntfList.end())
-        {
-            if (m_sagIntfList[alias] == true)
-            {
-                // del the sag MAC fdb from bridge
-                setSagFdbEntry("del", alias, gSagMacAddress.to_string());
-
-                // recover to global mac address
-                setIntfState(alias, false);
-                setIntfMac(alias, gMacAddress.to_string());
-                setIntfState(alias, true);
-            }
-            m_sagIntfList.erase(alias);
-        }
-
-        m_appIntfTableProducer.del(alias);
-        m_stateIntfTable.del(alias);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("Unknown operation: %s", op.c_str());
-    }
-
-    return true;
-}
-
-bool IntfMgr::doIntfAddrTask(const vector<string>& keys,
-        const vector<FieldValueTuple>& data,
-        const string& op)
-{
-    SWSS_LOG_ENTER();
-
-    string alias(keys[0]);
-    IpPrefix ip_prefix(keys[1]);
-    string appKey = keys[0] + ":" + keys[1];
-
-    if (op == SET_COMMAND)
-    {
-        /*
-         * Don't proceed if port/LAG/VLAN/subport and intfGeneral is not ready yet.
-         * The pending task will be checked periodically and retried.
-         */
-        if (!isIntfStateOk(alias) || !isIntfCreated(alias))
-        {
-            SWSS_LOG_DEBUG("Interface is not ready, skipping %s", alias.c_str());
-            return false;
-        }
-
-        setIntfIp(alias, "add", ip_prefix);
-
-        if (!ip_prefix.isV4() && ip_prefix.getIp().getAddrScope() == IpAddress::AddrScope::LINK_SCOPE)
-        {
-            m_intfLLAddresses[alias].insert(ip_prefix.to_string());
-        }
-
-        std::vector<FieldValueTuple> fvVector;
-        FieldValueTuple f("family", ip_prefix.isV4() ? IPV4_NAME : IPV6_NAME);
-
-        // Don't send ipv4 link local config to AppDB and Orchagent
-        if ((ip_prefix.isV4() == false) || (ip_prefix.getIp().getAddrScope() != IpAddress::AddrScope::LINK_SCOPE))
-        {
-            FieldValueTuple s("scope", "global");
-            fvVector.push_back(s);
-            fvVector.push_back(f);
-            m_appIntfTableProducer.set(appKey, fvVector);
-            m_stateIntfTable.hset(keys[0] + state_db_key_delimiter + keys[1], "state", "ok");
-        }
-    }
-    else if (op == DEL_COMMAND)
-    {
-        setIntfIp(alias, "del", ip_prefix);
-
-        if (!ip_prefix.isV4() && ip_prefix.getIp().getAddrScope() == IpAddress::AddrScope::LINK_SCOPE)
-        {
-            auto it = m_intfLLAddresses.find(alias);
-            if (it != m_intfLLAddresses.end())
-            {
-                it->second.erase(ip_prefix.to_string());
-                if (it->second.empty())
-                {
-                    m_intfLLAddresses.erase(it);
-                }
-            }
-        }
-
-        // Don't send ipv4 link local config to AppDB and Orchagent
-        if ((ip_prefix.isV4() == false) || (ip_prefix.getIp().getAddrScope() != IpAddress::AddrScope::LINK_SCOPE))
-        {
-            m_appIntfTableProducer.del(appKey);
-            m_stateIntfTable.del(keys[0] + state_db_key_delimiter + keys[1]);
-        }
-    }
-    else
-    {
-        SWSS_LOG_ERROR("Unknown operation: %s", op.c_str());
-    }
-
-    return true;
-}
-
-void IntfMgr::doSagTask(const vector<string>& keys,
-        const vector<FieldValueTuple> &data,
-        const string& op)
-{
-    SWSS_LOG_ENTER();
-
-    string mac = "";
-    for (auto idx : data)
-    {
-        const auto &field = fvField(idx);
-        const auto &value = fvValue(idx);
-
-        if (field == "gateway_mac")
-        {
-            mac = value;
-        }
-    }
-
-    vector<FieldValueTuple> fvAppSag;
-    if (op == SET_COMMAND)
-    {
-        if (mac.empty())
-        {
-            SWSS_LOG_ERROR("gateway_mac field is missing in SAG configuration");
-            return;
-        }
-        FieldValueTuple gwmac("gateway_mac", MacAddress(mac).to_string());
-        fvAppSag.push_back(gwmac);
-        m_appSagTableProducer.set("GLOBAL", fvAppSag);
-
-        updateSagMac(mac);
-    }
-    else if (op == DEL_COMMAND)
-    {
-        m_appSagTableProducer.del("GLOBAL");
-
-        // reset mac address for enabled static-anycast-gateway's VLAN interfaces
-        updateSagMac(gMacAddress.to_string());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("Unknown operation: %s", op.c_str());
-    }
-}
-
-void IntfMgr::doTask(Consumer &consumer)
-{
-    SWSS_LOG_ENTER();
-
-    string table_name = consumer.getTableName();
-
-    auto it = consumer.m_toSync.begin();
-    while (it != consumer.m_toSync.end())
-    {
-        KeyOpFieldsValuesTuple t = it->second;
-        if ((table_name == STATE_PORT_TABLE_NAME) || (table_name == STATE_LAG_TABLE_NAME))
-        {
-            doPortTableTask(kfvKey(t), kfvFieldsValues(t), kfvOp(t));
-        }
-        else
-        {
-            vector<string> keys = tokenize(kfvKey(t), config_db_key_delimiter);
-            const vector<FieldValueTuple>& data = kfvFieldsValues(t);
-            string op = kfvOp(t);
-
-            if (keys.size() == 1)
-            {
-                if((table_name == CFG_VOQ_INBAND_INTERFACE_TABLE_NAME) &&
-                        (op == SET_COMMAND))
-                {
-                    //No further processing needed. Just relay to orchagent
-                    m_appIntfTableProducer.set(keys[0], data);
-                    m_stateIntfTable.hset(keys[0], "vrf", "");
-
-                    it = consumer.m_toSync.erase(it);
-                    continue;
-                }
-
-                if (table_name == CFG_SAG_TABLE_NAME)
-                {
-                    doSagTask(keys, data, op);
-                    it = consumer.m_toSync.erase(it);
-                    continue;
-                }
-
-                if (!doIntfGeneralTask(keys, data, op))
-                {
-                    it++;
-                    continue;
-                }
-                else
-                {
-                    //Entry programmed, remove it from pending list if present
-                    m_pendingReplayIntfList.erase(keys[0]);
-                }
-            }
-            else if (keys.size() == 2)
-            {
-                if (!doIntfAddrTask(keys, data, op))
-                {
-                    it++;
-                    continue;
-                }
-                else
-                {
-                    //Entry programmed, remove it from pending list if present
-                    m_pendingReplayIntfList.erase(keys[0] + config_db_key_delimiter + keys[1] );
-                }
-            }
-            else
-            {
-                SWSS_LOG_ERROR("Invalid key %s", kfvKey(t).c_str());
-            }
-        }
-
-        it = consumer.m_toSync.erase(it);
-    }
-
-    if (!m_replayDone && WarmStart::isWarmStart() && m_pendingReplayIntfList.empty() )
-    {
-        setWarmReplayDoneState();
-    }
-}
-
-void IntfMgr::doPortTableTask(const string& key, vector<FieldValueTuple> data, string op)
-{
-    if (op == SET_COMMAND)
-    {
-        for (auto idx : data)
-        {
-            const auto &field = fvField(idx);
-            const auto &value = fvValue(idx);
-
-            if (field == "admin_status")
-            {
-                SWSS_LOG_INFO("Port %s Admin %s", key.c_str(), value.c_str());
-                updateSubIntfAdminStatus(key, value);
-
-                if (value == "up" && m_intfLLAddresses.count(key) > 0)
-                {
-                    replayLLIntfAddresses(key);
-                }
-            }
-            else if (field == "mtu")
-            {
-                SWSS_LOG_INFO("Port %s MTU %s", key.c_str(), value.c_str());
-                updateSubIntfMtu(key, value);
-            }
-        }
-    }
-}
-
-void IntfMgr::updateSagMac(const std::string &macAddr)
-{
-    vector<string> keys;
-    m_cfgVlanIntfTable.getKeys(keys);
-    for (auto &key: keys)
-    {
-        vector<string> entryKeys = tokenize(key, config_db_key_delimiter);
-        if (key.compare(0, strlen(VLAN_PREFIX), VLAN_PREFIX))
-        {
-            continue;
-        }
-
-        // only process the entry includes the SAG's config
-        // e.g. VLAN_INTERFACE|Vlan201
-        if (entryKeys.size() != 1)
-        {
-            continue;
-        }
-
-        string value = "";
-        if (m_cfgVlanIntfTable.hget(key, "static_anycast_gateway", value))
-        {
-            if (value == "true")
-            {
-                SWSS_LOG_NOTICE("set %s mac address to %s", key.c_str(), macAddr.c_str());
-
-                // enable SAG, set device down and up to regenerate IPv6 LL by MAC
-                setIntfState(key, false);
-                setIntfMac(key, macAddr);
-                setIntfState(key, true);
-
-                // remove the previous sag MAC fdb from bridge
-                setSagFdbEntry("del", key, gSagMacAddress.to_string());
-                // add this new MAC fdb into bridge, the "replace" could cover both "add" and "replace" cases.
-                setSagFdbEntry("replace", key, macAddr);
-
-                vector<FieldValueTuple> vlanIntFv;
-
-                // Get other fields to set them all together
-                m_cfgVlanIntfTable.get(key, vlanIntFv);
-
-                // keep consistent with default MAC 00:00:00:00:00:00
-                string entryMac = MacAddress().to_string();
-                if (macAddr != gMacAddress.to_string())
-                {
-                    entryMac = macAddr;
-                }
-
-                FieldValueTuple fvTuple("mac_addr", entryMac);
-                vlanIntFv.push_back(fvTuple);
-                m_appIntfTableProducer.set(key, vlanIntFv);
-            }
-        } else {
-            SWSS_LOG_INFO("can't get %s in VLAN_INTERFACE table", key.c_str());
-        }
-    }
-    gSagMacAddress = MacAddress(macAddr);
-}
-
-bool IntfMgr::enableIpv6Flag(const string &alias)
-{
-    stringstream cmd;
-    string temp_res;
-    cmd << "sysctl -w net.ipv6.conf." << shellquote(alias) << ".disable_ipv6=0";
-    int ret = swss::exec(cmd.str(), temp_res);
-    SWSS_LOG_INFO("disable_ipv6 flag is set to 0 for iface: %s, cmd: %s, ret: %d", alias.c_str(), cmd.str().c_str(), ret);
-    return (ret == 0) ? true : false;
-}
-
-void IntfMgr::replayLLIntfAddresses(const string &alias)
-{
-    auto it = m_intfLLAddresses.find(alias);
-    if (it == m_intfLLAddresses.end())
-    {
-        return;
-    }
-
-    for (const auto &addr : it->second)
-    {
-        IpPrefix ipPrefix(addr);
-        setIntfIp(alias, "add", ipPrefix);
-        SWSS_LOG_INFO("Replayed IPv6 link-local address %s on interface %s after admin up",
-            addr.c_str(), alias.c_str());
-    }
-}
+    else if (m_st
